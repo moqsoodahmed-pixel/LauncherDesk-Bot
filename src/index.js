@@ -94,10 +94,8 @@ app.post('/webhook/whatsapp', async (req, res) => {
   }
 
   try {
-    // Log raw payload during development (remove in production)
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Webhook] Raw payload:', JSON.stringify(req.body, null, 2).slice(0, 500));
-    }
+    // Log raw payload to identify MSG91 message ID field
+    console.log('[Webhook] Raw payload:', JSON.stringify(req.body, null, 2).slice(0, 800));
 
     const parsed = parseInbound(req.body);
 

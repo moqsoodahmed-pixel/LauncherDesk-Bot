@@ -67,18 +67,26 @@ function normalizeNumber(num) {
 // URL: https://your-render-url.onrender.com/webhook/whatsapp
 
 // ── Deduplication cache ───────────────────────────────────────
-// MSG91 retries the webhook if the bot is slow, causing the same
-// message to be processed twice — the user sees two bot replies.
-// We fingerprint each inbound message and drop duplicates within
-// a 30-second window. An in-process Set is enough: duplicates
-// arrive within milliseconds of each other, not across restarts.
-const recentMessageIds = new Set();
-function isDuplicate(id) {
-  if (!id) return false;
-  if (recentMessageIds.has(id)) return true;
-  recentMessageIds.add(id);
-  // Auto-expire after 30 s so the Set doesn't grow forever
-  setTimeout(() => recentMessageIds.delete(id), 30000);
+// MSG91 delivers the SAME user message as multiple webhook calls
+// with DIFFERENT UUIDs, up to 30 seconds apart. UUID-based dedup
+// cannot catch this. Instead we fingerprint on phone + content
+// and reject any identical message from the same phone within 60s.
+const recentMessages = new Map();   // key → timestamp
+
+function isDuplicateByContent(phone, text) {
+  const key = phone + ':' + String(text || '').trim().toLowerCase().slice(0, 50);
+  const now = Date.now();
+  const prev = recentMessages.get(key);
+  if (prev && (now - prev) < 60000) {
+    return true;   // same phone + same text within 60 seconds
+  }
+  recentMessages.set(key, now);
+  // Cleanup old entries every 100 inserts
+  if (recentMessages.size > 200) {
+    for (const [k, t] of recentMessages) {
+      if (now - t > 60000) recentMessages.delete(k);
+    }
+  }
   return false;
 }
 
@@ -110,21 +118,11 @@ app.post('/webhook/whatsapp', async (req, res) => {
     }
 
     // Drop duplicate webhook deliveries from MSG91.
-    // MSG91 sometimes delivers the same message 2-3 times. We fingerprint
-    // on phone + content + a 10-second bucket so retries are silently dropped.
-    const rawBody = req.body || {};
-    const msgTimestamp = rawBody.timestamp || rawBody.ts || '';
-    const msgContent = String(parsed.text || parsed.buttonId || parsed.listRowId || '').slice(0, 30);
-    const msgId =
-      rawBody.uuid      ||
-      parsed.msgId      ||
-      rawBody.id        ||
-      rawBody.messageId ||
-      rawBody.msgId     ||
-      rawBody.data?.id  ||
-      (parsed.phone + ':' + parsed.type + ':' + msgContent + ':' + (msgTimestamp || Math.floor(Date.now() / 10000)));
-    if (isDuplicate(msgId)) {
-      console.log('[Webhook] Duplicate message dropped: ' + msgId);
+    // PROVEN: MSG91 delivers the same user message as multiple webhooks
+    // with DIFFERENT UUIDs up to 30s apart. We dedup by phone+content.
+    const dedupText = parsed.text || parsed.buttonId || parsed.listRowId || '';
+    if (isDuplicateByContent(parsed.phone, dedupText)) {
+      console.log('[Webhook] Duplicate dropped (same phone+text within 60s): ' + parsed.phone + ' "' + dedupText + '"');
       return;
     }
 

@@ -116,6 +116,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
     const msgTimestamp = rawBody.timestamp || rawBody.ts || '';
     const msgContent = String(parsed.text || parsed.buttonId || parsed.listRowId || '').slice(0, 30);
     const msgId =
+      rawBody.uuid      ||
       parsed.msgId      ||
       rawBody.id        ||
       rawBody.messageId ||

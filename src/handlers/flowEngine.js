@@ -462,6 +462,15 @@ function interpret(flow, answers, index, input) {
   if (upper === 'RESTART' || upper === 'START OVER') return { action: 'control', control: 'restart' };
   if (upper === 'SKIP' && !step.required)           return { action: 'control', control: 'skip' };
 
+  // ── Greetings work at every step ──────────────────────────
+  // Checked early so a "Hi" mid-flow always triggers the resume/restart
+  // prompt regardless of step type (list, buttons, text). Without this,
+  // "Hi" on a list step hits the options block, returns unrecognised,
+  // and handleInvalid sends TWO messages (error + re-ask).
+  if (!tapped && GREETINGS.has(typed.toLowerCase())) {
+    return { action: 'greeting' };
+  }
+
   // ── Tapped control rows ────────────────────────────────────
   // Accept both ctl: (original) and ctl_ (sanitised by msg91.js)
   // because MSG91 sanitises IDs before sending them back on the

@@ -490,8 +490,10 @@ async function handleInvalid(session, phone, flow, errorText) {
     return;
   }
 
-  await messages.sendValidationError(phone, errorText, session.state);
-  return sendCurrentStep(session, phone);
+  // Send only the validation error — do NOT re-send the current step.
+  // Sending both produces two bot messages for one user input which
+  // looks broken. The error message itself tells them to try again.
+  return messages.sendValidationError(phone, errorText, session.state);
 }
 
 async function advance(session, phone, flow) {

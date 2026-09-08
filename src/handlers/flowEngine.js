@@ -502,6 +502,17 @@ function interpret(flow, answers, index, input) {
   // Users regularly type "GST" instead of tapping. Matching the text
   // against option titles avoids a pointless "I didn't understand".
   if (step.options && typed) {
+    // ── Numbered input (e.g. user types "1", "2", "3") ────────
+    // MSG91 sometimes renders list messages as plain numbered text
+    // on certain Android devices. Accept the number as a valid pick
+    // so the user is never stuck when the interactive list fails.
+    const num = parseInt(typed, 10);
+    if (!isNaN(num) && num >= 1 && num <= step.options.length) {
+      const picked = step.options[num - 1];
+      if (step.input === 'multi') return { action: 'multi_add', value: picked.id };
+      return { action: 'answer', value: picked.id, label: picked.title };
+    }
+
     const match = step.options.find(
       (o) => o.title.toLowerCase() === typed.toLowerCase() || o.id === typed.toLowerCase()
     );

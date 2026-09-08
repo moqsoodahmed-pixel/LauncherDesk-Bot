@@ -15,6 +15,7 @@ function parseInbound(body) {
   // MSG91 wraps everything under 'data' or 'entry' depending on version
   // Try both shapes
   const entry = body?.data || body;
+  const msgId = body?.id || body?.messageId || body?.msgId || entry?.id || entry?.messageId || null;
 
   // Phone number — always present as wa_id or mobile
  const phone =
@@ -46,6 +47,7 @@ function parseInbound(body) {
       text:     btnPayload?.text || btnPayload?.title || '',
       buttonId: btnPayload?.payload || btnPayload?.id || '',
       listRowId: null,
+      msgId,
     };
   }
 
@@ -60,6 +62,7 @@ function parseInbound(body) {
         text:     interactive.button_reply?.title || '',
         buttonId: interactive.button_reply?.id    || '',
         listRowId: null,
+        msgId,
       };
     }
 
@@ -70,6 +73,7 @@ function parseInbound(body) {
         text:     interactive.list_reply?.title || '',
         buttonId: null,
         listRowId: interactive.list_reply?.id   || '',
+        msgId,
       };
     }
   }
@@ -97,6 +101,7 @@ function parseInbound(body) {
     text:     textBody.trim(),
     buttonId: null,
     listRowId: null,
+    msgId,
   };
 }
 

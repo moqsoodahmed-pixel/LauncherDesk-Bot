@@ -111,11 +111,21 @@ app.post('/webhook/whatsapp', async (req, res) => {
       return;
     }
 
-    // Drop duplicate webhook deliveries from MSG91
-    const msgId = req.body?.id || req.body?.messageId || req.body?.msgId ||
-                  `${parsed.phone}:${parsed.text}:${Date.now() - (Date.now() % 5000)}`;
+    // Drop duplicate webhook deliveries from MSG91.
+    // MSG91 sometimes delivers the same message 2-3 times. We fingerprint
+    // on phone + content + a 10-second bucket so retries are silently dropped.
+    const rawBody = req.body || {};
+    const msgTimestamp = rawBody.timestamp || rawBody.ts || '';
+    const msgContent = String(parsed.text || parsed.buttonId || parsed.listRowId || '').slice(0, 30);
+    const msgId =
+      parsed.msgId      ||
+      rawBody.id        ||
+      rawBody.messageId ||
+      rawBody.msgId     ||
+      rawBody.data?.id  ||
+      (parsed.phone + ':' + parsed.type + ':' + msgContent + ':' + (msgTimestamp || Math.floor(Date.now() / 10000)));
     if (isDuplicate(msgId)) {
-      console.log(`[Webhook] Duplicate message dropped: ${msgId}`);
+      console.log('[Webhook] Duplicate message dropped: ' + msgId);
       return;
     }
 

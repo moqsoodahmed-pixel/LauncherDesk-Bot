@@ -12,8 +12,19 @@ const BULK_URL    = 'https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound
 const AUTH_KEY    = process.env.MSG91_AUTH_KEY;
 const FROM_NUMBER = process.env.MSG91_WHATSAPP_NUMBER;
 
+// ── Diagnostic: global outbound counter ───────────────────────
+let _outboundSeq = 0;
+
 // ── Core sender for SESSION messages (text + interactive) ─────
 async function sendSession(to, contentType, contentObject) {
+  const seq = ++_outboundSeq;
+  // Capture the call stack so we know exactly which function triggered this send
+  const stack = new Error().stack.split('\n').slice(1, 5).map(l => l.trim()).join(' <- ');
+  const interactiveType = contentObject?.interactive?.type || 'text';
+  const bodyPreview = contentObject?.interactive?.body?.text?.slice(0, 60) || contentObject?.text?.body?.slice(0, 60) || '';
+
+  console.log(`[OUTBOUND #${seq}] phone=${to} type=${contentType} interactive=${interactiveType} body="${bodyPreview}" caller=${stack}`);
+
   try {
     const body = {
       recipient_number:  to,
@@ -24,11 +35,6 @@ async function sendSession(to, contentType, contentObject) {
 
     const _t0 = Date.now();
     const res = await http.post(SESSION_URL, body, {
-      // WITHOUT THIS, a slow or hung MSG91 request waits indefinitely.
-      // Combined with the per-phone lock in services/lock.js, one hung
-      // send blocks every later message from that user — observed as a
-      // 30-second reply. 8s is generous for an API that normally
-      // answers in under 400ms; failing fast and logging beats hanging.
       timeout: 8000,
       headers: {
         authkey: AUTH_KEY,
@@ -36,12 +42,10 @@ async function sendSession(to, contentType, contentObject) {
         accept: 'application/json',
       },
     });
-    // Timing included so a slow MSG91 API is visible in the logs
-    // rather than being mistaken for slowness in the bot.
-    console.log(`[MSG91] ${contentType} → ${to} in ${Date.now() - _t0}ms:`, JSON.stringify(res.data).slice(0, 150));
+    console.log(`[MSG91 #${seq}] ${contentType} → ${to} in ${Date.now() - _t0}ms:`, JSON.stringify(res.data).slice(0, 150));
     return res.data;
   } catch (err) {
-    console.error(`[MSG91] Error (${contentType}) → ${to}:`, JSON.stringify(err.response?.data || err.message));
+    console.error(`[MSG91 #${seq}] Error (${contentType}) → ${to}:`, JSON.stringify(err.response?.data || err.message));
     throw err;
   }
 }

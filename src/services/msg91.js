@@ -52,11 +52,23 @@ async function sendText(to, text) {
 }
 
 // ── 2. Interactive list ───────────────────────────────────────
+// Sanitise all row IDs for the same reason as button IDs above —
+// colons cause MSG91 to silently downgrade to plain text.
+function sanitiseListSections(sections) {
+  return sections.map((section) => ({
+    ...section,
+    rows: (section.rows || []).map((row) => ({
+      ...row,
+      id: String(row.id).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 200),
+    })),
+  }));
+}
+
 async function sendListMessage(to, bodyText, buttonLabel, sections, headerText, footerText) {
   const interactive = {
     type: 'list',
     body: { text: bodyText },
-    action: { button: buttonLabel, sections },
+    action: { button: buttonLabel, sections: sanitiseListSections(sections) },
   };
   if (headerText) interactive.header = { type: 'text', text: headerText };
   if (footerText) interactive.footer = { text: footerText };
@@ -64,6 +76,15 @@ async function sendListMessage(to, bodyText, buttonLabel, sections, headerText, 
 }
 
 // ── 3. Interactive reply buttons (max 3) ──────────────────────
+// WhatsApp button IDs must be alphanumeric + underscore/hyphen only.
+// Colons in IDs (e.g. "ctl:back") cause MSG91 to silently downgrade
+// the message to plain text on some devices. Sanitise here so the
+// wire format is always valid regardless of what the flow engine
+// passes in.
+function sanitiseButtonId(id) {
+  return String(id).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 256);
+}
+
 async function sendButtonMessage(to, bodyText, buttons, headerText, footerText) {
   const interactive = {
     type: 'button',
@@ -71,7 +92,7 @@ async function sendButtonMessage(to, bodyText, buttons, headerText, footerText) 
     action: {
       buttons: buttons.map((btn) => ({
         type: 'reply',
-        reply: { id: btn.id, title: btn.title },
+        reply: { id: sanitiseButtonId(btn.id), title: btn.title },
       })),
     },
   };

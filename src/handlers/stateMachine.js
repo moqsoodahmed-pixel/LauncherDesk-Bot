@@ -169,7 +169,7 @@ async function handleMenu(session, parsed) {
     // A stale control tap from an older bubble is not the user failing
     // to understand — don't tell them they were unclear, just re-show
     // the list.
-    const isStaleControl = selected.startsWith('ctl:') ||
+    const isStaleControl = selected.startsWith('ctl:') || tapped.startsWith('ctl_') ||
       ['CONTINUE', "LET'S START", 'LETS START', 'SUBMIT', 'EDIT', 'BACK',
        'SKIP', 'DONE', 'STAY HERE', 'START OVER', 'VISIT WEBSITE',
        'BROWSE SERVICES', 'MAIN MENU'].includes(upperText);
@@ -255,9 +255,9 @@ async function handleFlow(session, parsed) {
     const tapped = parsed.listRowId || parsed.buttonId || '';
     const said = String(parsed.text || '').toUpperCase().trim();
 
-    if (tapped === 'ctl:show_menu' || said === 'SHOW SERVICES' || target === 'MENU') {
+    if (tapped === 'ctl:show_menu' || tapped === 'ctl_show_menu' || said === 'SHOW SERVICES' || target === 'MENU') {
       // Only treat as confirmed if they actually said yes to it.
-      if (tapped === 'ctl:show_menu' || said === 'SHOW SERVICES'
+      if (tapped === 'ctl:show_menu' || tapped === 'ctl_show_menu' || said === 'SHOW SERVICES'
           || said === 'YES' || said === 'SWITCH') {
         session.resetFlow();
         session.state = 'MENU';
@@ -269,7 +269,7 @@ async function handleFlow(session, parsed) {
       return sendCurrentStep(session, phone);
     }
 
-    if (tapped === 'ctl:switch_yes' || said === 'SWITCH' || said === 'YES') {
+    if (tapped === 'ctl:switch_yes' || tapped === 'ctl_switch_yes' || said === 'SWITCH' || said === 'YES') {
       session.pendingSwitchTo = null;
       if (target === 'expert') {
         return handleExpertHandoff(session, phone, 'topic_switch');
@@ -302,11 +302,11 @@ async function handleFlow(session, parsed) {
   // never mistaken for an answer to the current question.
   const tappedRaw = parsed.listRowId || parsed.buttonId || '';
   const upperRaw = String(parsed.text || '').toUpperCase().trim();
-  if (tappedRaw === 'ctl:resume' || upperRaw === 'CONTINUE'
-      || tappedRaw === 'ctl:begin' || upperRaw === "LET'S START") {
+  if (tappedRaw === 'ctl:resume' || tappedRaw === 'ctl_resume' || upperRaw === 'CONTINUE'
+      || tappedRaw === 'ctl:begin' || tappedRaw === 'ctl_begin' || upperRaw === "LET'S START") {
     return sendCurrentStep(session, phone);
   }
-  if (tappedRaw === 'ctl:restart_flow' || upperRaw === 'START OVER') {
+  if (tappedRaw === 'ctl:restart_flow' || tappedRaw === 'ctl_restart_flow' || upperRaw === 'START OVER') {
     session.resetFlow();
     session.state = 'MENU';
     await session.save();
@@ -534,11 +534,11 @@ async function handleSummary(session, parsed) {
   const tapped = parsed.listRowId || parsed.buttonId || '';
   const upper = String(parsed.text || '').toUpperCase().trim();
 
-  if (tapped === 'ctl:submit' || upper === 'SUBMIT' || upper === 'YES') {
+  if (tapped === 'ctl:submit' || tapped === 'ctl_submit' || upper === 'SUBMIT' || upper === 'YES') {
     return submitLead(session, phone);
   }
 
-  if (tapped === 'ctl:edit' || upper === 'EDIT') {
+  if (tapped === 'ctl:edit' || tapped === 'ctl_edit' || upper === 'EDIT') {
     // Send them back to the first question of the same flow, keeping
     // their answers so each step arrives pre-answered — retyping
     // everything from scratch is what makes users abandon here.
@@ -553,7 +553,7 @@ async function handleSummary(session, parsed) {
 
   // Titles matched too: some MSG91 setups deliver a button tap as
   // plain text containing the label rather than an interactive payload.
-  if (tapped === 'ctl:expert' || upper === 'EXPERT' || upper === 'TALK TO AN EXPERT') {
+  if (tapped === 'ctl:expert' || tapped === 'ctl_expert' || upper === 'EXPERT' || upper === 'TALK TO AN EXPERT') {
     return handleExpertHandoff(session, phone, 'summary_request');
   }
 
@@ -712,20 +712,20 @@ async function handleDone(session, parsed) {
 
   const upper = String(parsed.text || '').toUpperCase().trim();
 
-  if (tapped === 'ctl:browse_more' || upper === 'BROWSE SERVICES' || upper === 'BACK TO MENU') {
+  if (tapped === 'ctl:browse_more' || tapped === 'ctl_browse_more' || upper === 'BROWSE SERVICES' || upper === 'BACK TO MENU') {
     session.resetFlow();
     session.state = 'MENU';
     await session.save();
     return messages.sendWelcomeMenu(phone, session.state);
   }
 
-  if (tapped === 'ctl:visit_web' || upper === 'VISIT WEBSITE') {
+  if (tapped === 'ctl:visit_web' || tapped === 'ctl_visit_web' || upper === 'VISIT WEBSITE') {
     // Falls back to the live site if WEBSITE_URL isn't set in Railway.
     const url = process.env.WEBSITE_URL || 'https://www.launcherdesk.com/';
     return messages.sendWebsite(phone, url, session.state);
   }
 
-  if (tapped === 'ctl:expert' || upper === 'TALK TO AN EXPERT') {
+  if (tapped === 'ctl:expert' || tapped === 'ctl_expert' || upper === 'TALK TO AN EXPERT') {
     return handleExpertHandoff(session, phone, 'post_submit_request');
   }
 
@@ -739,7 +739,7 @@ async function handleDone(session, parsed) {
     'BACK', 'SKIP', 'DONE', 'NONE OF THESE', 'STAY HERE',
     'YES, USE THIS', 'USE ANOTHER', 'START OVER', 'CHANGE SERVICE',
   ];
-  const staleCtl = tapped.startsWith('ctl:') || STALE_AFTER_DONE.includes(upper);
+  const staleCtl = tapped.startsWith('ctl:') || tapped.startsWith('ctl_') || STALE_AFTER_DONE.includes(upper);
 
   session.resetFlow();
   session.state = 'MENU';

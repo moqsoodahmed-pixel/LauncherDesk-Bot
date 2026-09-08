@@ -463,7 +463,11 @@ function interpret(flow, answers, index, input) {
   if (upper === 'SKIP' && !step.required)           return { action: 'control', control: 'skip' };
 
   // ── Tapped control rows ────────────────────────────────────
-  if (tapped.startsWith('ctl:')) {
+  // Accept both ctl: (original) and ctl_ (sanitised by msg91.js)
+  // because MSG91 sanitises IDs before sending them back on the
+  // webhook, so "ctl:back" arrives as "ctl_back".
+  const isCtl = tapped.startsWith('ctl:') || tapped.startsWith('ctl_');
+  if (isCtl) {
     const control = tapped.slice(4);
     if (control === 'mobile_yes') {
       return { action: 'answer', value: VALIDATORS.mobile(input.waNumber).value };
@@ -490,12 +494,17 @@ function interpret(flow, answers, index, input) {
   }
 
   // ── Tapped an option ───────────────────────────────────────
-  if (tapped.startsWith('opt:')) {
+  // Accept both opt: (original) and opt_ (sanitised by msg91.js)
+  const isOpt = tapped.startsWith('opt:') || tapped.startsWith('opt_');
+  if (isOpt) {
     const id = tapped.slice(4);
-    const option = step.options?.find((o) => o.id === id);
+    // Find the option — try exact id match first, then sanitised match
+    const option = step.options?.find(
+      (o) => o.id === id || o.id.replace(/[^a-zA-Z0-9_\-]/g, '_') === id
+    );
     if (!option) return { action: 'unrecognised' };
-    if (step.input === 'multi') return { action: 'multi_add', value: id };
-    return { action: 'answer', value: id, label: option.title };
+    if (step.input === 'multi') return { action: 'multi_add', value: option.id };
+    return { action: 'answer', value: option.id, label: option.title };
   }
 
   // ── Typed text where a choice was expected ─────────────────

@@ -65,9 +65,27 @@ function normalizeNumber(num) {
 // ── MSG91 Inbound Webhook ─────────────────────────────────────
 // Configure this URL in MSG91: WhatsApp → Settings → Inbound webhook
 // URL: https://your-render-url.onrender.com/webhook/whatsapp
+
+// ── Deduplication cache ───────────────────────────────────────
+// MSG91 retries the webhook if the bot is slow, causing the same
+// message to be processed twice — the user sees two bot replies.
+// We fingerprint each inbound message and drop duplicates within
+// a 30-second window. An in-process Set is enough: duplicates
+// arrive within milliseconds of each other, not across restarts.
+const recentMessageIds = new Set();
+function isDuplicate(id) {
+  if (!id) return false;
+  if (recentMessageIds.has(id)) return true;
+  recentMessageIds.add(id);
+  // Auto-expire after 30 s so the Set doesn't grow forever
+  setTimeout(() => recentMessageIds.delete(id), 30000);
+  return false;
+}
+
 app.post('/webhook/whatsapp', async (req, res) => {
   // Always respond 200 immediately — MSG91 retries if it gets no quick response
   res.sendStatus(200);
+
   const toNumber = req.body?.integratedNumber;
   const ownNumber = process.env.MSG91_WHATSAPP_NUMBER;
   if (toNumber && ownNumber && normalizeNumber(toNumber) !== normalizeNumber(ownNumber)) {
@@ -90,6 +108,14 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
     if (!parsed.phone) {
       console.warn('[Webhook] No phone in parsed payload — skipping');
+      return;
+    }
+
+    // Drop duplicate webhook deliveries from MSG91
+    const msgId = req.body?.id || req.body?.messageId || req.body?.msgId ||
+                  `${parsed.phone}:${parsed.text}:${Date.now() - (Date.now() % 5000)}`;
+    if (isDuplicate(msgId)) {
+      console.log(`[Webhook] Duplicate message dropped: ${msgId}`);
       return;
     }
 

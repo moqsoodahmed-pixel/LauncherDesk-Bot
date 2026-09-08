@@ -148,10 +148,21 @@ async function handleMenu(session, parsed) {
   let flowId = FLOWS[selected] && !FLOWS[selected].hidden ? selected : null;
   if (!flowId && parsed.text) {
     const t = parsed.text.toLowerCase().trim();
-    const hit = Object.values(FLOWS).find(
-      (f) => !f.hidden && (f.menu.title.toLowerCase() === t || f.label.toLowerCase() === t)
-    );
-    if (hit) flowId = hit.id;
+
+    // Accept a number (e.g. "1", "2") when MSG91 renders the menu as
+    // a plain numbered list on some Android devices.
+    const num = parseInt(t, 10);
+    const menuItems = Object.values(FLOWS).filter((f) => !f.hidden);
+    if (!isNaN(num) && num >= 1 && num <= menuItems.length) {
+      flowId = menuItems[num - 1].id;
+    }
+
+    if (!flowId) {
+      const hit = Object.values(FLOWS).find(
+        (f) => !f.hidden && (f.menu.title.toLowerCase() === t || f.label.toLowerCase() === t)
+      );
+      if (hit) flowId = hit.id;
+    }
   }
 
   if (!flowId) {

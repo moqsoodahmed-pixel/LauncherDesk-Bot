@@ -48,7 +48,15 @@ async function sendWelcomeMenu(phone, state) {
     "We're here to help you start, manage and grow your business.\n\n" +
     'Please choose a service below.';
 
-  const sections = [{ title: 'Our Services', rows: MENU_ROWS }];
+  // WhatsApp interactive lists cap at 10 rows total across all sections.
+  // With all 10 services in one section, MSG91 silently downgrades the
+  // whole message to plain text. Splitting into two sections of 5 keeps
+  // the total at 10 and the interactive list renders correctly on device.
+  const half = Math.ceil(MENU_ROWS.length / 2);
+  const sections = [
+    { title: 'Start & Grow',   rows: MENU_ROWS.slice(0, half) },
+    { title: 'More Services',  rows: MENU_ROWS.slice(half) },
+  ];
 
   const result = await msg91.sendListMessage(phone, body, 'View Services', sections);
   await logOutgoingSafe(phone, body, 'interactive', state);

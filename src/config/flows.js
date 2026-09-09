@@ -382,6 +382,11 @@ const FLOWS = {
     id: 'intl',
     label: 'International Expansion',
     menu: { title: 'Intl Expansion', description: 'Overseas setup, IEC, Tax advisory' },
+    // Removed from the main menu per request. `hidden: true` also makes
+    // this flow unreachable by typing the category name — the engine
+    // skips hidden flows in typed matching too (flowEngine.detectServiceIntent,
+    // stateMachine.handleMenu). To bring it back later, delete this line.
+    hidden: true,
     steps: [
       {
         key: 'country',
@@ -957,11 +962,10 @@ const FLOWS = {
   },
 
   // ═══════════════════════════════════════════════════════════
-  //  11. E-Stamp — split step
-  //  Its own top-level service (launcherdesk.com/estamp) — same
-  //  split mechanism as Office Setup/Virtual Office/Marketplace:
-  //  one-step router that hands off to a dedicated hidden flow
-  //  per option, each counting its own 6-step cap.
+  //  11. E-Stamp — single flat flow (replaces the old 4-way split)
+  //  Order: First Party -> Second Party -> E-Stamp Value ->
+  //  Who's Paying -> Document Type -> No. of Papers -> State ->
+  //  Name -> Mobile.
   // ═══════════════════════════════════════════════════════════
   estamp: {
     id: 'estamp',
@@ -969,36 +973,40 @@ const FLOWS = {
     menu: { title: 'E-Stamp', description: 'E-stamps for agreements & documents' },
     steps: [
       {
-        key: 'estamp_need',
-        label: 'Requirement',
-        prompt: 'What type of E-Stamp service do you need?',
-        input: 'list',
-        listButton: 'Choose Option',
+        key: 'first_party',
+        label: 'First Party',
+        prompt: 'Who is the First Party in the document?',
+        input: 'text',
+        required: true,
+        validate: 'free',
+      },
+      {
+        key: 'second_party',
+        label: 'Second Party',
+        prompt: 'Who is the Second Party in the document?',
+        input: 'text',
+        required: true,
+        validate: 'free',
+      },
+      {
+        key: 'estamp_value',
+        label: 'E-Stamp Value',
+        prompt: 'What is the E-Stamp value?',
+        input: 'text',
+        required: true,
+        validate: 'free',
+      },
+      {
+        key: 'who_paying',
+        label: 'Who Is Paying',
+        prompt: 'Who is paying for the E-Stamp?',
+        input: 'buttons',
         required: true,
         options: [
-          { id: 'new_estamp',  title: 'New E-Stamp',            description: 'Purchase a fresh e-stamp' },
-          { id: 'agreement',   title: 'E-Stamp for Agreement',  description: 'Stamp duty for agreements' },
-          // "E-Stamp for Business / Commercial Document" is 42 chars —
-          // over the 24-char list row limit. Full wording kept below.
-          { id: 'business_doc', title: 'Business/Commercial Doc', description: 'Partnership, vendor, employment & commercial documents' },
-          { id: 'not_sure',    title: 'Not Sure',               description: 'Help me choose' },
+          { id: 'first_party',  title: 'First Party' },
+          { id: 'second_party', title: 'Second Party' },
         ],
-        branchTo: (value) => ({
-          new_estamp:   'estamp_new',
-          agreement:    'estamp_agreement',
-          business_doc: 'estamp_business',
-          not_sure:     'estamp_not_sure',
-        }[value]),
       },
-    ],
-  },
-
-  // ── 11A. New E-Stamp ──────────────────────────────────────────
-  estamp_new: {
-    id: 'estamp_new',
-    label: 'E-Stamp — New E-Stamp',
-    hidden: true,
-    steps: [
       {
         key: 'document_type',
         label: 'Document Type',
@@ -1015,166 +1023,17 @@ const FLOWS = {
         ],
       },
       {
-        key: 'state',
-        label: 'State',
-        prompt: 'Which state is the document for?',
+        key: 'no_of_papers',
+        label: 'No. of E-Stamp Papers',
+        prompt: 'How many E-Stamp papers do you need?',
         input: 'text',
         required: true,
         validate: 'free',
-      },
-      {
-        key: 'know_stamp_value',
-        label: 'Know Stamp Value',
-        prompt: 'Do you know the required stamp value?',
-        input: 'buttons',
-        required: true,
-        options: [
-          { id: 'yes', title: 'Yes' },
-          { id: 'no',  title: 'No' },
-        ],
-      },
-      {
-        key: 'stamp_value',
-        label: 'Stamp Value',
-        prompt: 'What is the stamp value?',
-        input: 'text',
-        required: true,
-        validate: 'free',
-        // Only asked when the user said they know it.
-        skipIf: (a) => a.know_stamp_value !== 'yes',
-      },
-      STEP_NAME,
-      STEP_MOBILE,
-    ],
-  },
-
-  // ── 11B. E-Stamp for Agreement ────────────────────────────────
-  estamp_agreement: {
-    id: 'estamp_agreement',
-    label: 'E-Stamp — Agreement',
-    hidden: true,
-    steps: [
-      {
-        key: 'agreement_type',
-        label: 'Agreement Type',
-        prompt: 'What type of agreement?',
-        input: 'list',
-        listButton: 'Choose Type',
-        required: true,
-        options: [
-          { id: 'rental_lease',      title: 'Rental / Lease Agreement' },
-          // "Vendor / Service Agreement" is 26 chars — over the
-          // 24-char limit. Spaces around the slash dropped to fit.
-          { id: 'vendor_service',    title: 'Vendor/Service Agreement' },
-          { id: 'employment',       title: 'Employment Agreement' },
-          { id: 'business_agreement', title: 'Business Agreement' },
-          { id: 'other',             title: 'Other' },
-        ],
       },
       {
         key: 'state',
         label: 'State',
-        prompt: 'Which state is the agreement for?',
-        input: 'text',
-        required: true,
-        validate: 'free',
-      },
-      {
-        key: 'know_stamp_value',
-        label: 'Know Stamp Value',
-        prompt: 'Do you know the required stamp value?',
-        input: 'buttons',
-        required: true,
-        options: [
-          { id: 'yes', title: 'Yes' },
-          { id: 'no',  title: 'No' },
-        ],
-      },
-      {
-        key: 'stamp_value',
-        label: 'Stamp Value',
-        prompt: 'What is the stamp value?',
-        input: 'text',
-        required: true,
-        validate: 'free',
-        skipIf: (a) => a.know_stamp_value !== 'yes',
-      },
-      STEP_NAME,
-      STEP_MOBILE,
-    ],
-  },
-
-  // ── 11C. E-Stamp for Business / Commercial Document ──────────
-  estamp_business: {
-    id: 'estamp_business',
-    label: 'E-Stamp — Business/Commercial Doc',
-    hidden: true,
-    steps: [
-      {
-        key: 'document_type',
-        label: 'Document Type',
-        prompt: 'What type of document is it?',
-        input: 'list',
-        listButton: 'Choose Type',
-        required: true,
-        options: [
-          // "Partnership / Business Agreement" is 33 chars — over the
-          // 24-char limit. Full wording kept in the row description.
-          { id: 'partnership_business', title: 'Partnership Agreement', description: 'Partnership or business agreement' },
-          { id: 'vendor',               title: 'Vendor Agreement' },
-          { id: 'employment_doc',       title: 'Employment Document' },
-          { id: 'commercial_contract',  title: 'Commercial Contract' },
-          { id: 'other',                title: 'Other' },
-        ],
-      },
-      {
-        key: 'state',
-        label: 'State',
-        prompt: 'Which state is the document for?',
-        input: 'text',
-        required: true,
-        validate: 'free',
-      },
-      {
-        key: 'know_stamp_value',
-        label: 'Know Stamp Value',
-        prompt: 'Do you know the required stamp value?',
-        input: 'buttons',
-        required: true,
-        options: [
-          { id: 'yes', title: 'Yes' },
-          { id: 'no',  title: 'No' },
-        ],
-      },
-      {
-        key: 'stamp_value',
-        label: 'Stamp Value',
-        prompt: 'What is the stamp value?',
-        input: 'text',
-        required: true,
-        validate: 'free',
-        skipIf: (a) => a.know_stamp_value !== 'yes',
-      },
-      STEP_NAME,
-      STEP_MOBILE,
-    ],
-  },
-
-  // ── 11D. Not Sure ─────────────────────────────────────────────
-  // No reusable "Not Sure"-assist path existed elsewhere in the
-  // project (same conclusion reached for Virtual Office's Not Sure
-  // branch), so this is the smallest compatible flow: the assist
-  // line rides along in the first question's prompt bubble rather
-  // than inventing a new message-send mechanism.
-  estamp_not_sure: {
-    id: 'estamp_not_sure',
-    label: 'E-Stamp — Not Sure',
-    hidden: true,
-    steps: [
-      {
-        key: 'requirement',
-        label: 'Requirement',
-        prompt: 'Sure, we can help you choose the right E-Stamp option.\n\nWhat do you need an E-Stamp for?',
+        prompt: 'Which state is this E-Stamp for?',
         input: 'text',
         required: true,
         validate: 'free',

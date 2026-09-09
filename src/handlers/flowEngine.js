@@ -445,6 +445,7 @@ function detectServiceIntent(typed, currentFlowId) {
   // Unambiguous service keyword
   for (const [flowId, words] of Object.entries(SERVICE_KEYWORDS)) {
     if (flowId === currentFlowId) continue;
+    if (FLOWS[flowId] && FLOWS[flowId].hidden) continue;
     if (words.some((w) => t === w || t.includes(w))) {
       return { type: 'flow', flowId };
     }

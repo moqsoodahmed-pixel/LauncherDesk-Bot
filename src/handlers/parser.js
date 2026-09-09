@@ -15,7 +15,25 @@ function parseInbound(body) {
   // MSG91 wraps everything under 'data' or 'entry' depending on version
   // Try both shapes
   const entry = body?.data || body;
-  const msgId = body?.id || body?.messageId || body?.msgId || entry?.id || entry?.messageId || null;
+  const msgId =
+    body?.id || body?.messageId || body?.msgId ||
+    entry?.id || entry?.messageId || entry?.msgId ||
+    entry?.wamid || entry?.message?.id || null;
+
+  // ── Delivery/status callbacks are not user messages ───────
+  // MSG91 (like the WhatsApp Cloud API it wraps) can post the SAME
+  // webhook URL with a status update ("sent"/"delivered"/"read"/
+  // "failed") instead of an inbound message. These carry a phone
+  // number too, so without this guard they fall through to the
+  // plain-text branch below with an empty body and the bot replies
+  // with the welcome menu to a delivery receipt. Reject them here.
+  const STATUS_VALUES = new Set(['sent', 'delivered', 'read', 'failed', 'deleted', 'enqueued']);
+  const statusVal =
+    entry?.status || entry?.event ||
+    (Array.isArray(entry?.statuses) ? entry.statuses[0]?.status : null);
+  if (statusVal && STATUS_VALUES.has(String(statusVal).toLowerCase())) {
+    return null;
+  }
 
   // Phone number — always present as wa_id or mobile
  const phone =
@@ -94,6 +112,14 @@ function parseInbound(body) {
     entry?.content,
   ];
   const textBody = candidates.find((c) => typeof c === 'string' && c.length > 0) || '';
+
+  // No usable text, and we already ruled out button/interactive shapes
+  // above — this is not a real inbound message (most likely another
+  // status/event shape this parser doesn't recognise by name). Do not
+  // forward it into the conversation engine.
+  if (!textBody.trim()) {
+    return null;
+  }
 
   return {
     phone,

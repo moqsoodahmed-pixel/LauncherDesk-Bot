@@ -175,8 +175,18 @@ function renderStep(flow, answers, index, opts = {}) {
     controls.push({ id: 'ctl:change_service', title: 'Change Service', description: 'Pick a different service' });
     controls.push({ id: 'ctl:restart', title: 'Start Over', description: 'Return to main menu' });
 
-    const room = WA_LIST_MAX_ROWS - rows.length;
-    const kept = controls.slice(0, Math.max(0, room));
+    // WhatsApp counts each section header as a slot in addition to its rows.
+    // With options in one section and controls in another, the effective cap is:
+    //   WA_LIST_MAX_ROWS - 1 (Options header) - 1 (Navigation header) = 8 rows for controls.
+    // When there is no room for any control row, skip the Navigation section
+    // entirely (saving the header slot too) and surface typed keywords in footer.
+    const HEADER_COST = 1; // one slot per section header
+    const optionSectionCost = rows.length + HEADER_COST; // Options section
+    // Room left after the Options section, minus the Navigation header if we add one
+    const roomForControls = controls.length > 0
+      ? WA_LIST_MAX_ROWS - optionSectionCost - HEADER_COST
+      : 0;
+    const kept = controls.slice(0, Math.max(0, roomForControls));
     const dropped = controls.length - kept.length;
 
     const sections = [{ title: 'Options', rows }];

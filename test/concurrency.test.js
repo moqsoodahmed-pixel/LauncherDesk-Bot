@@ -136,6 +136,25 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  ✗ ' + m); 
     console.log(`   \u2713 8 rapid messages, max ${maxConcurrent} concurrent, map drained`);
   }
 
+  // ── Same message id delivered twice → one response ────────────
+  console.log('── Duplicate msgId (retried webhook) produces one response ──');
+  fresh('MENU'); S.flowId = null; S.answers = {};
+  sent.length = 0;
+  await sm.handleInbound(msg({ text: 'Hi', msgId: 'wamid.DUPLICATE_TEST' }));
+  const afterFirst = sent.length;
+  ok(afterFirst >= 1, 'first delivery of a message should get a reply');
+  await sm.handleInbound(msg({ text: 'Hi', msgId: 'wamid.DUPLICATE_TEST' }));
+  ok(sent.length === afterFirst, `retried msgId should not produce another reply, got ${sent.length - afterFirst} extra`);
+  console.log(`   ✓ ${afterFirst} reply for the original + retry combined`);
+
+  // ── "Hi" produces exactly one response ─────────────────────────
+  console.log('── "Hi" at MENU produces exactly one response ──');
+  fresh('MENU'); S.flowId = null; S.answers = {};
+  sent.length = 0;
+  await sm.handleInbound(msg({ text: 'Hi', msgId: 'wamid.HI_ONCE' }));
+  ok(sent.length === 1, `expected exactly 1 reply to "Hi", got ${sent.length}`);
+  console.log(`   ✓ ${sent.length} reply to "Hi"`);
+
   console.log(fail === 0
     ? `\n✅ all ${pass} concurrency assertions passed`
     : `\n❌ ${fail} failed / ${pass} passed`);

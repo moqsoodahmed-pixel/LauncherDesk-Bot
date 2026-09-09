@@ -48,10 +48,30 @@ function handleInbound(parsed) {
 }
 
 async function handleInboundSerial(parsed) {
-  const { phone, type, text, buttonId, listRowId } = parsed;
+  const { phone, type, text, buttonId, listRowId, msgId } = parsed;
   const upper = String(text || '').toUpperCase().trim();
 
   const session = await getOrCreate(phone);
+
+  // Durable idempotency: index.js's in-memory dedup caches reset on
+  // every deploy/restart. This is a second line of defence keyed on
+  // MSG91's own message id, persisted per phone in MongoDB, so a
+  // retried delivery of the exact same message is still rejected
+  // after a restart.
+  if (msgId && session.lastProcessedMsgId === msgId) {
+    console.log(JSON.stringify({
+      event: 'DUPLICATE_EVENT_IGNORED', reason: 'session.lastProcessedMsgId',
+      messageId: msgId, phone,
+    }));
+    return;
+  }
+  if (msgId) {
+    session.lastProcessedMsgId = msgId;
+  }
+
+  const normalizedInput = String(text || buttonId || listRowId || '').trim();
+  const currentState = session.state;
+
   logIncomingSafe(phone, text, type, session.state);
   stampIncoming(session, text);
 
@@ -111,14 +131,16 @@ async function handleInboundSerial(parsed) {
     ` | ${type} | "${text}" | btn=${buttonId} list=${listRowId}`
   );
 
+  let responseSent = 'unknown';
   switch (session.state) {
-    case 'MENU':    await handleMenu(session, parsed);    break;
-    case 'FLOW':    await handleFlow(session, parsed);    break;
-    case 'SUMMARY': await handleSummary(session, parsed); break;
-    case 'DONE':    await handleDone(session, parsed);    break;
+    case 'MENU':    await handleMenu(session, parsed);    responseSent = 'menu';    break;
+    case 'FLOW':    await handleFlow(session, parsed);    responseSent = 'flow';    break;
+    case 'SUMMARY': await handleSummary(session, parsed); responseSent = 'summary'; break;
+    case 'DONE':    await handleDone(session, parsed);    responseSent = 'done';    break;
 
     case 'HUMAN':
       console.log(`[Bot] ${phone} in HUMAN state — skipped`);
+      responseSent = 'none_human_paused';
       break;
 
     default:
@@ -127,7 +149,22 @@ async function handleInboundSerial(parsed) {
       session.state = 'MENU';
       await session.save();
       await messages.sendWelcomeMenu(phone, session.state);
+      responseSent = 'welcome_menu_fallback';
   }
+
+  // Structured, single-line summary of the turn. No secrets/tokens are
+  // logged — only routing metadata needed to trace "why did the bot
+  // reply with X" without grepping raw MSG91 payloads.
+  console.log(JSON.stringify({
+    event: 'INBOUND_PROCESSED',
+    messageId: msgId || null,
+    phone,
+    messageType: type,
+    currentState,
+    normalizedInput,
+    nextState: session.state,
+    responseType: responseSent,
+  }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -169,7 +206,7 @@ async function handleMenu(session, parsed) {
     // A stale control tap from an older bubble is not the user failing
     // to understand — don't tell them they were unclear, just re-show
     // the list.
-    const isStaleControl = selected.startsWith('ctl:') || tapped.startsWith('ctl_') ||
+    const isStaleControl = selected.startsWith('ctl:') || selected.startsWith('ctl_') ||
       ['CONTINUE', "LET'S START", 'LETS START', 'SUBMIT', 'EDIT', 'BACK',
        'SKIP', 'DONE', 'STAY HERE', 'START OVER', 'VISIT WEBSITE',
        'BROWSE SERVICES', 'MAIN MENU'].includes(upperText);

@@ -67,11 +67,36 @@ function normalizeNumber(num) {
 // URL: https://your-render-url.onrender.com/webhook/whatsapp
 
 // ── Deduplication cache ───────────────────────────────────────
-// MSG91 delivers the SAME user message as multiple webhook calls
-// with DIFFERENT UUIDs, up to 30 seconds apart. UUID-based dedup
-// cannot catch this. Instead we fingerprint on phone + content
-// and reject any identical message from the same phone within 60s.
-const recentMessages = new Map();   // key → timestamp
+// Primary key: MSG91's own message id / WAMID (parsed.msgId). When
+// present this is an exact, provider-issued identifier for the
+// webhook delivery, so two deliveries carrying the same id are the
+// same event and the second is always a duplicate.
+//
+// Fallback: MSG91 has also been observed delivering the SAME user
+// message as separate webhook calls with DIFFERENT ids/UUIDs, up to
+// 30 seconds apart — ID-based dedup alone cannot catch that, so we
+// additionally fingerprint on phone + content and reject an identical
+// message from the same phone within 60s.
+//
+// Both caches are in-process only (reset on deploy/restart); Session
+// also persists the last processed msgId per phone (see
+// stateMachine.js) as a durable second line of defence.
+const recentMessages = new Map();   // phone+text key → timestamp
+const recentMsgIds   = new Map();   // msgId → timestamp
+
+function isDuplicateByMsgId(msgId) {
+  if (!msgId) return false;
+  const now = Date.now();
+  const prev = recentMsgIds.get(msgId);
+  if (prev && (now - prev) < 5 * 60000) return true;
+  recentMsgIds.set(msgId, now);
+  if (recentMsgIds.size > 500) {
+    for (const [k, t] of recentMsgIds) {
+      if (now - t > 5 * 60000) recentMsgIds.delete(k);
+    }
+  }
+  return false;
+}
 
 function isDuplicateByContent(phone, text) {
   const key = phone + ':' + String(text || '').trim().toLowerCase().slice(0, 50);
@@ -118,11 +143,22 @@ app.post('/webhook/whatsapp', async (req, res) => {
     }
 
     // Drop duplicate webhook deliveries from MSG91.
-    // PROVEN: MSG91 delivers the same user message as multiple webhooks
-    // with DIFFERENT UUIDs up to 30s apart. We dedup by phone+content.
+    // 1) Exact msgId/WAMID match — the strongest signal available.
+    if (isDuplicateByMsgId(parsed.msgId)) {
+      console.log(JSON.stringify({
+        event: 'DUPLICATE_EVENT_IGNORED', reason: 'msgId', messageId: parsed.msgId, phone: parsed.phone,
+      }));
+      return;
+    }
+
+    // 2) PROVEN fallback: MSG91 delivers the same user message as
+    // multiple webhooks with DIFFERENT ids up to 30s apart. Dedup by
+    // phone+content catches that case too.
     const dedupText = parsed.text || parsed.buttonId || parsed.listRowId || '';
     if (isDuplicateByContent(parsed.phone, dedupText)) {
-      console.log('[Webhook] Duplicate dropped (same phone+text within 60s): ' + parsed.phone + ' "' + dedupText + '"');
+      console.log(JSON.stringify({
+        event: 'DUPLICATE_EVENT_IGNORED', reason: 'phone+content', messageId: parsed.msgId, phone: parsed.phone,
+      }));
       return;
     }
 

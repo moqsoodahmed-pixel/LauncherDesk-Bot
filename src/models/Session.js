@@ -62,6 +62,15 @@ const sessionSchema = new mongoose.Schema(
     reminderSentAt: { type: Date, default: null },
     abandonedAt:    { type: Date, default: null },
 
+    // ── Idempotency ──────────────────────────────────────────
+    // MSG91's own message/WAMID for the last inbound webhook that was
+    // actually processed for this phone. Durable (survives a restart,
+    // unlike index.js's in-memory dedup map) and keyed on the real
+    // provider id rather than a phone+text fingerprint, so a retried
+    // delivery of the SAME message id is rejected even if the user
+    // happens to send identical text again minutes later.
+    lastProcessedMsgId: { type: String, default: null },
+
     // ── Conversation metadata (dashboard routes depend on this) ──
     conversation: {
       firstMessageAt:      { type: Date, default: Date.now },
